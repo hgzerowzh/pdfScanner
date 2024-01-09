@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, wait, ALL_COMPLETED
 from tkinter import filedialog, messagebox
 from openpyxl import load_workbook
 import xml.etree.ElementTree as ET
+import tkinter.font as font
 
 
 class Scanner:
@@ -142,16 +143,16 @@ class Translator:
 
 
     def btn_change(self, state):
-        """translate button click change
+        """start scan button click change
 
         Args:
             state (str): disable or norma
         """
         if state == "disable":
-            btn_start_translate.config(state=tk.DISABLED)
+            btn_start_scan.config(state=tk.DISABLED)
             btn_open_file.config(state=tk.DISABLED) 
         elif state == "normal":
-            btn_start_translate.config(state=tk.NORMAL)
+            btn_start_scan.config(state=tk.NORMAL)
             btn_open_file.config(state=tk.NORMAL) 
 
 
@@ -192,14 +193,11 @@ class Translator:
         output_display.insert(tk.END, f"[Info] 翻译开始, 请等待一段时间...\n")
 
         wb = openpyxl.load_workbook(path)
-
-        # 构造线程池对所有工作表进行操作
         t_poll = ThreadPoolExecutor(max_workers=self.view_workers)
         thread_list = []
         for worksheet_name in wb.sheetnames:
             output_display.insert(tk.END, f"[Info] 开始翻译: {worksheet_name}\n")
             ws = wb[worksheet_name]
-            # 将未翻译的sheet翻译
             if ws.max_column % 3 != 0:
                 f = t_poll.submit(self.insert_translation_columns, ws)
                 thread_list.append(f)   
@@ -212,16 +210,23 @@ class Translator:
         output_display.see(tk.END)
         output_display.xview_moveto(current_xview[0])
         
-        # 生成有道词典单词本xml文件
-        xml_str = ET.tostring(self.youdao_book, encoding='unicode', method='xml')
-        xml_str = xml_str.replace('&lt;', '<').replace('&gt;', '>').replace("youdao_wordbook.xml", "wordbook")
-        bookfile = "%s/youdao_wordbook.xml" % os.path.dirname(path)
-        with open(bookfile, 'wb') as f:
-            f.write(xml_str.encode('utf-8'))
-        output_display.insert(tk.END, f"[Success] 单词本: {bookfile}\n")
+        # 生成有道单词本
+        self.generate_youdao_workbook(path=path)
+        
         trans_label_var.set("翻译完成!")
         self.btn_change("normal")
 
+
+    def generate_youdao_workbook(self, path):
+        # 生成有道词典单词本xml文件
+        if output_wordbook.get():
+            xml_str = ET.tostring(self.youdao_book, encoding='unicode', method='xml')
+            xml_str = xml_str.replace('&lt;', '<').replace('&gt;', '>').replace("youdao_wordbook.xml", "wordbook")
+            bookfile = "%s/youdao_wordbook.xml" % os.path.dirname(path)
+            with open(bookfile, 'wb') as f:
+                f.write(xml_str.encode('utf-8'))
+            output_display.insert(tk.END, f"[Success] 单词本: {bookfile}\n")
+        
 
     def insert_translation_columns(self, ws):
         """insert translated info to specific cell in column
@@ -232,7 +237,6 @@ class Translator:
         max_col = ws.max_column
         for col in range(1, 2*max_col+1, 3):
             ws.insert_cols(col+1)
-            # 开启线程池进行多线程翻译
             executor = ThreadPoolExecutor(max_workers=self.row_workers)
             t_list = []
             # 从第二行开始，翻译并填充翻译列的内容
@@ -242,6 +246,7 @@ class Translator:
                     f = executor.submit(self.trans_row, text, ws, row, col)
                     t_list.append(f)
             wait(t_list, return_when=ALL_COMPLETED)
+
 
     def trans_row(self, text, ws, row, col):
         """translate one cell in Excel
@@ -259,10 +264,6 @@ class Translator:
         else:
             translation = self.translate_baidu_api(str(text))
             
-        # 添加到单词本
-        if youdao_wordbook_check_var.get():
-            self.add_word_youdao(str(text).strip())
-            
         # 处理翻译内容
         if len(translation) > 150:
             translation = translation[:150]
@@ -278,8 +279,9 @@ class Translator:
         # if "/" in translation:
         #     translation = translation.split("/")[0]
             
-        # 创建有道词典单词本xml文件
-        self.create_words_book(str(text), translation)
+        # 创建有道词典单词本xml对象
+        if output_wordbook.get():
+            self.create_words_book(str(text), translation)
             
         current_xview = output_display.xview()
         output_display.see(tk.END)
@@ -288,6 +290,7 @@ class Translator:
         if translation:
             ws.cell(row=row, column=col+1).value = translation
         time.sleep(float(self.sleep_time))
+
 
     def create_words_book(self, word, trans):
         """generate youdao wordbook xml object
@@ -307,6 +310,7 @@ class Translator:
         tags_elem.text = '<![CDATA[%s]]>' % self.tag_name
         progress_elem = ET.SubElement(item, 'progress')
         progress_elem.text = '0'
+
 
     def translate_baidu_api(self, text):
         """use baidu translate api 
@@ -332,13 +336,17 @@ class Translator:
         }
         response = requests.get(self.BASE_URL, params=params)
         result = response.json()
-        try:
-            dst = str(result['trans_result'][0]['dst'])
-            output_display.insert(tk.END, f"[Info] {text}: {dst}\n")
-            return dst
-        except KeyError:
-            print('翻译失败:', result)
-            return None
+        for i in range(3):
+            try:
+                dst = str(result['trans_result'][0]['dst'])
+                output_display.insert(tk.END, f"[Info] {text}: {dst}\n")
+                return dst
+            except KeyError:
+                if i < 2:
+                    time.sleep(0.2)
+        print('翻译失败:', result)
+        return None
+
 
     def translate_local(self, word):
         """use local dictionary to translate
@@ -357,6 +365,7 @@ class Translator:
                 continue
         return None
     
+    
     def add_word_youdao(self, word):
         """add word to youdao wordbook
 
@@ -366,17 +375,24 @@ class Translator:
             None
         """
         url = f"{self.words_book_url}{word}"
-        try:
-            response = requests.get(url, headers=self.add_youdao_workbook_headers)
-            data = response.json()
-            if data['code'] == 0:
-                pass
-            else:
-                print("添加失败: %s" % word)
-        except Exception as e:
-            print("异常: %s" % word)
-            return {'error': f'发生异常: {str(e)}'}
-
+        for i in range(3):
+            try:
+                response = requests.get(url, headers=self.add_youdao_workbook_headers)
+                data = response.json()
+                if data['code'] == 0:
+                    output_display.insert(tk.END, f"[Info] Success: 添加 {str(word)} 到单词本!\n")
+                    current_xview = output_display.xview()
+                    output_display.see(tk.END)
+                    output_display.xview_moveto(current_xview[0])
+                    return
+                else:
+                    continue
+            except Exception as e:
+                if i < 2:
+                    time.sleep(0.2)
+        print("添加单词本异常: %s" % word)
+        return "Failed"
+                
 
 class ScannerGui(Scanner):
     """PDF Scanner Gui Class
@@ -394,30 +410,77 @@ class ScannerGui(Scanner):
         self.dir_path = None
         self.output_path = None
 
+
     def run(self):
         self.window.title(self.name)
         self.window.geometry(self.size)
 
-        global selected_directory, btn_start_scan, output_display, output_file_path_var, btn_start_translate, btn_open_file, trans_label, trans_label_var, youdao_wordbook_check_var
-
+        global selected_directory, btn_start_scan, output_display, output_file_path_var, btn_open_file, trans_label, trans_label_var
+        global translate_words, youdao_wordbook_check_var, output_words_excel, output_wordbook
+        
         # 目录选择和显示
         selected_directory = tk.StringVar(self.window)
-        tk.Entry(self.window, textvariable=selected_directory, width=25).grid(row=0, column=0, padx=(10,2), pady=5, sticky='ew')
-        tk.Button(self.window, text="选择文件", command=self.select_file).grid(row=0, column=1, padx=(0, 0), pady=5, sticky='ew')
-        tk.Button(self.window, text="选择目录", command=self.select_directory).grid(row=0, column=2, padx=(0, 0), pady=5, sticky='ew')
+        tk.Entry(self.window, textvariable=selected_directory).grid(row=0, column=0, padx=(10,2),columnspan=3, pady=5, sticky='ew')
+        tk.Button(self.window, text="选择文件", command=self.select_file).grid(row=0, column=4, padx=(0, 0), pady=5, sticky='ew')
+        tk.Button(self.window, text="选择目录", command=self.select_directory).grid(row=0, column=5, padx=(0, 5), pady=5, sticky='ew')
 
-        # 开始扫描按钮
-        btn_start_scan = tk.Button(self.window, text="开始扫描", command=self.start_scan, state=tk.DISABLED)
-        btn_start_scan.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky='ew')
+        font_1 = font.Font(family='Arial', size=13, weight='bold')
+        font_2 = font.Font(weight='bold')
+
+        # 功能选项
+        options_selected_Frame = tk.LabelFrame(self.window, text="功能选项", borderwidth=0, font=font_1)
+        options_selected_Frame.grid(row=1, rowspan=1, column=0, padx=10, pady=5, sticky='ew')
+        
+        translate_words = tk.BooleanVar(value=True)
+        translate_words_box = tk.Checkbutton(options_selected_Frame, text="翻译单词", variable=translate_words)
+        translate_words_box.grid(row=0, column=0, sticky='w')
+        
+        youdao_wordbook_check_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(options_selected_Frame, text="添加单词本", variable=youdao_wordbook_check_var).grid(row=1, column=0, sticky='w')
+
+        # 生成文件
+        output_selected_Frame = tk.LabelFrame(self.window, text="生成文件", borderwidth=0, font=font_1)
+        output_selected_Frame.grid(row=1,rowspan=1, column=1, padx=25, pady=5, sticky='ew')
+        
+        output_words_excel = tk.BooleanVar(value=True)
+        output_words_box = tk.Checkbutton(output_selected_Frame, text="单词Excel", variable=output_words_excel)
+        output_words_box.grid(row=0, column=1, sticky='w')
+
+        output_wordbook = tk.BooleanVar(value=True)
+        output_wordbook_box = tk.Checkbutton(output_selected_Frame, text="单词本xml", variable=output_wordbook)
+        output_wordbook_box.grid(row=1, column=1, sticky='w')
+        
+        # 事件绑定
+        def select_all_hook(source_var, *args):
+            if source_var.get():
+                for arg in args:
+                    arg.set(source_var.get())  
+        def translate_wrods_hook(translate_words, output_words_excel, output_wordbook):
+            if not translate_words.get():
+                output_wordbook.set(translate_words.get())    
+            output_words_excel.set(translate_words.get())     
+            
+        # 选项之间的关联性
+        output_words_box.config(command=lambda: select_all_hook(output_words_excel, translate_words))
+        output_wordbook_box.config(command=lambda: select_all_hook(output_wordbook, translate_words, output_words_excel))
+        translate_words_box.config(command=lambda: translate_wrods_hook(translate_words, output_words_excel, output_wordbook))
+    
+        # 导入配置
+        btn_clear_output = tk.Button(self.window, text="添  加\n配  置")
+        btn_clear_output.grid(row=1,rowspan=1, column=4, columnspan=1, padx=(0, 0), pady=(20,5), sticky='ew')
+
+        # 开始扫描
+        btn_start_scan = tk.Button(self.window, text="扫  描\nScan", command=self.start_scan, state=tk.DISABLED, font=font_2)
+        btn_start_scan.grid(row=1, rowspan=1, column=5, columnspan=1, padx=(0, 5), pady=(20, 5), sticky='ew')
 
         # 带有垂直和水平滚动条的输出显示区域
         frame_output = tk.Frame(self.window)
-        frame_output.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky='nsew')
+        frame_output.grid(row=3, column=0, columnspan=6, padx=10, pady=5, sticky='nsew')
 
         v_scrollbar = tk.Scrollbar(frame_output, orient=tk.VERTICAL)
         h_scrollbar = tk.Scrollbar(frame_output, orient=tk.HORIZONTAL)
         
-        output_display = tk.Text(frame_output, wrap=tk.NONE, yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set, height=14)
+        output_display = tk.Text(frame_output, wrap=tk.NONE, yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set, height=20)
         v_scrollbar.config(command=output_display.yview)
         h_scrollbar.config(command=output_display.xview)
         
@@ -430,26 +493,21 @@ class ScannerGui(Scanner):
 
         # 输出文件路径和打开按钮
         output_file_path_var = tk.StringVar(self.window)
-        tk.Entry(self.window, textvariable=output_file_path_var, width=25).grid(row=3, column=0, padx=(10,2), pady=2, sticky='ew')
+        tk.Entry(self.window, textvariable=output_file_path_var).grid(row=4, column=0, columnspan=5, padx=(10,2), pady=2, sticky='ew')
         btn_open_file = tk.Button(self.window, text="打开", command=self.open_output_file)
-        btn_open_file.grid(row=3, column=1, padx=(0,0), pady=5, sticky='ew')
-
-        # 翻译
-        trans_label_var = tk.StringVar(self.window)
-        trans_label = tk.Label(self.window, textvariable=trans_label_var, width=25, anchor=tk.W)
-        trans_label.grid(row=4, column=0, padx=(10,0), pady=5, sticky='ew')
-        btn_start_translate = tk.Button(self.window, text="翻译", command=self.translator.start, state=tk.NORMAL)
-        btn_start_translate.grid(row=3, column=2, padx=(0,0), pady=5, sticky='ew')
+        btn_open_file.grid(row=4, column=5, padx=(1, 5), pady=5, sticky='ew')
         
-        # 有道单词本
-        youdao_wordbook_check_var = tk.BooleanVar(self.window)
-        tk.Checkbutton(self.window, text="单词本", variable=youdao_wordbook_check_var).grid(row=4, column=2, columnspan=1, padx=1, pady=1, sticky='ew')
-
+        # 底部信息显示
+        trans_label_var = tk.StringVar(self.window)
+        trans_label = tk.Label(self.window, textvariable=trans_label_var, anchor=tk.W)
+        trans_label.grid(row=5, column=0, columnspan=5, padx=(10,0), pady=5, sticky='ew')
+ 
         # 配置网格以适当地展开
         self.window.grid_columnconfigure(0, weight=1)
         self.window.grid_columnconfigure(1, weight=1)
         self.window.grid_columnconfigure(2, weight=1)
         self.window.mainloop()
+
 
     def select_file(self):
         """select file button
@@ -459,6 +517,7 @@ class ScannerGui(Scanner):
             selected_directory.set(file_name.name)
             btn_start_scan.config(state=tk.NORMAL)
 
+
     def select_directory(self):
         """select directory button
         """
@@ -466,6 +525,7 @@ class ScannerGui(Scanner):
         if dir_path:
             selected_directory.set(dir_path)
             btn_start_scan.config(state=tk.NORMAL)
+
 
     def start_scan(self):
         """start scan button
@@ -475,11 +535,14 @@ class ScannerGui(Scanner):
             return
         btn_start_scan.config(state=tk.DISABLED)
         output_display.delete(1.0, tk.END)  # clear output
+        output_display.insert(tk.END, f"[Start] ***开始扫描*** \n")
+        output_display.insert(tk.END, f"[Info] 请静侯,再静侯......\n\n")
         if os.path.isfile(selected_directory.get()):
             target = self.scan_file
         elif os.path.isdir(selected_directory.get()):
             target = self.scan_directory
         threading.Thread(target=target).start()
+
 
     def scan_file(self):
         """scan pdf file hightlight info and extract it into excel
@@ -507,10 +570,22 @@ class ScannerGui(Scanner):
                 print("[ERROR] Error occurred: ", e)
         else:
             mode='w'
-        with pd.ExcelWriter(self.output_path, engine='openpyxl', mode=mode) as writer:
-            super().scan_pdf(file_path, writer)
-            self.deal_excel(sheet_name)
-        self.show_output()
+        # 生成Excel
+        self.translator.btn_change("disable")
+        if output_words_excel.get():
+            with pd.ExcelWriter(self.output_path, engine='openpyxl', mode=mode) as writer:
+                super().scan_pdf(file_path, writer)
+                self.deal_excel(sheet_name)
+            self.deal_excel_translate()
+            
+        if translate_words.get() and not output_words_excel.get() and not output_wordbook.get():
+            output_display.insert(tk.END, f"[Info] ***无需翻译***.\n\n")
+            
+        # 添加到单词本
+        if youdao_wordbook_check_var.get(): 
+            self.add_to_youdao_wordbook(file_path=file_path)
+        self.translator.btn_change("normal")
+
 
     def scan_directory(self):
         """scan pdf files in directory and extract it into excel
@@ -521,12 +596,44 @@ class ScannerGui(Scanner):
         if not pdf_files:
             output_display.insert(tk.END, "[Error] 选定的目录中未发现PDF文件.\n")
         self.output_path = os.path.join(dir_path, self.output_file)
-        with pd.ExcelWriter(self.output_path, engine='openpyxl') as writer:
+        
+        # 生成Excel
+        self.translator.btn_change("disable")
+        if output_words_excel.get():
+            with pd.ExcelWriter(self.output_path, engine='openpyxl') as writer:
+                for pdf_file in pdf_files:
+                    super().scan_pdf(pdf_file, writer)     
+                    sheet_name = os.path.splitext(os.path.basename(self.pdf_path))[0][:31]
+                    self.deal_excel(sheet_name)
+            self.deal_excel_translate()
+            
+        # 添加到单词本
+        if youdao_wordbook_check_var.get():
             for pdf_file in pdf_files:
-                super().scan_pdf(pdf_file, writer)
-                sheet_name = os.path.splitext(os.path.basename(self.pdf_path))[0][:31]
-                self.deal_excel(sheet_name)
-        self.show_output()
+                self.add_to_youdao_wordbook(file_path=pdf_file)
+        self.translator.btn_change("normal")
+
+
+    def add_to_youdao_wordbook(self, file_path):
+        """add words to youdao wordbook
+
+        Args:
+            file_path (str): pdf file's absolutely path
+        """
+        super().scan_pdf(file_path, None)
+        if self.highlights_by_color:
+            t_poll = ThreadPoolExecutor(max_workers=16)
+            thread_list = []
+            output_display.insert(tk.END, f"[Info] 开始添加单词到有道单词本...\n")
+            for color in self.highlights_by_color.keys():
+                for word_hightlight in self.highlights_by_color[color]:
+                    f = t_poll.submit(self.translator.add_word_youdao, str(word_hightlight).strip())
+                    thread_list.append(f)
+            wait(thread_list, return_when=ALL_COMPLETED)
+            output_display.insert(tk.END, f"[Info] 完成! 单词添加到单词本完成!\n")
+            current_xview = output_display.xview()
+            output_display.see(tk.END)
+            output_display.xview_moveto(current_xview[0])
 
 
     def deal_excel(self, sheet_name):
@@ -536,7 +643,8 @@ class ScannerGui(Scanner):
             sheet_name (str): Excel sheet name
         """      
         if self.highlights_by_color: 
-            output_display.insert(tk.END, f"[Info] 处理中: {self.pdf_path}\n")
+            output_display.insert(tk.END, f"[Info] PDF文件扫描完成!\n")
+            output_display.insert(tk.END, f"[Info] 开始处理: {self.pdf_path}\n")
             max_rows = max(len(texts) for texts in self.highlights_by_color.values())
             df = pd.DataFrame()
             for color in self.highlights_by_color.keys():
@@ -547,17 +655,25 @@ class ScannerGui(Scanner):
         else:
             print(f"No highlighted text found in {self.pdf_path}.")
             output_display.insert(tk.END, f"[Warn] 无高亮: {self.pdf_path}\n")
+            
 
-    def show_output(self):
-        """deal excel sheet and show output info
+    def deal_excel_translate(self):
+        """deal excel sheet and translate
         """
         self.sort_sheets()
-        output_display.insert(tk.END, f"[Success] 归类完成! 文件: {self.output_path}.\n\n\n")
+        output_display.insert(tk.END, f"[Info] 处理Excel归类完成!\n")
+        output_display.insert(tk.END, f"[Info] 生成文件: {self.output_path}.\n\n")
         output_file_path_var.set(self.output_path)
+        
+        # 是否翻译
+        if translate_words.get():
+            self.translator.start()
+            
         btn_start_scan.config(state=tk.NORMAL) 
         current_xview = output_display.xview()
         output_display.see(tk.END)
         output_display.xview_moveto(current_xview[0])
+        
 
     def sort_sheets(self):
         """sort sheet by sheetname
@@ -568,6 +684,7 @@ class ScannerGui(Scanner):
         for idx, sheet_name in enumerate(sorted_sheet_names):
             sheet[sheet_name].index = idx
         sheet.save(self.output_path)
+
 
     def open_output_file(self):
         """open output excel file 
@@ -613,12 +730,12 @@ def main():
         words_book_url='https://dict.youdao.com/wordbook/webapi/v2/ajax/add?lan=en&word=',  # 有道单词本api
         sleep_time='0.1',
         books=translate_books,
-        tag_name="mytest",            # 生成的有道单词本xml中的tag, 可以自己指定
+        tag_name="mytest",            # 生成的有道单词本xml中的tag
         cookies=youdao_cookie
     )
     scanner_gui = ScannerGui(
-        name="pdfScanner v1.1(添加网易单词本)",
-        size="380x375",
+        name="pdfScanner v1.2",
+        size="460x475",
         output_file="output.xlsx",    # 生成excel文件的名字
         translator=translator,
     )
