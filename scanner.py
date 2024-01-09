@@ -455,13 +455,19 @@ class ScannerGui(Scanner):
             if source_var.get():
                 for arg in args:
                     arg.set(source_var.get())  
+                    
         def translate_wrods_hook(translate_words, output_words_excel, output_wordbook):
             if not translate_words.get():
                 output_wordbook.set(translate_words.get())    
-            output_words_excel.set(translate_words.get())     
+            output_words_excel.set(translate_words.get()) 
+            
+        def output_words_hook(output_words_excel, translate_words, output_wordbook):
+            if not output_words_excel.get():
+                output_wordbook.set(output_words_excel.get())
+            translate_words.set(output_words_excel.get())            
             
         # 选项之间的关联性
-        output_words_box.config(command=lambda: select_all_hook(output_words_excel, translate_words))
+        output_words_box.config(command=lambda: output_words_hook(output_words_excel, translate_words, output_wordbook))
         output_wordbook_box.config(command=lambda: select_all_hook(output_wordbook, translate_words, output_words_excel))
         translate_words_box.config(command=lambda: translate_wrods_hook(translate_words, output_words_excel, output_wordbook))
     
