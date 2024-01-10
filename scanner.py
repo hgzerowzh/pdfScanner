@@ -98,16 +98,6 @@ class Translator:
         self.youdao_book = ET.Element('youdao_wordbook.xml')
         self.tag_name = tag_name
         self.cookies = cookies
-        self.add_youdao_workbook_headers = {
-            'Cookie': self.cookies,
-            'Host': 'dict.youdao.com',
-            'Upgrade-Insecure-Requests': '1',
-            'Accept-Encoding': 'gzip, deflate',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
-            'Accept': 'application/json, text/plain, */*',
-            'Referer': 'https://dict.youdao.com',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
-        }
         
       
     def load_translate_books(self):
@@ -375,9 +365,19 @@ class Translator:
             None
         """
         url = f"{self.words_book_url}{word}"
+        headers = {
+            'Cookie': self.cookies,
+            'Host': 'dict.youdao.com',
+            'Upgrade-Insecure-Requests': '1',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Language': 'zh-CN,zh;q=0.9',
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': 'https://dict.youdao.com',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'
+        }
         for i in range(3):
             try:
-                response = requests.get(url, headers=self.add_youdao_workbook_headers)
+                response = requests.get(url, headers=headers)
                 data = response.json()
                 if data['code'] == 0:
                     output_display.insert(tk.END, f"[Info] Success: 添加 {str(word)} 到单词本!\n")
@@ -390,7 +390,10 @@ class Translator:
             except Exception as e:
                 if i < 2:
                     time.sleep(0.2)
-        print("添加单词本异常: %s" % word)
+        output_display.insert(tk.END, f"[Error] Failed: 添加 {str(word)} 失败!\n")
+        current_xview = output_display.xview()
+        output_display.see(tk.END)
+        output_display.xview_moveto(current_xview[0])
         return "Failed"
                 
 
@@ -409,6 +412,9 @@ class ScannerGui(Scanner):
         self.translator = translator
         self.dir_path = None
         self.output_path = None
+        self.api_key = ""
+        self.api_secret = ""
+        self.youdao_cookie_entry = ""
 
 
     def run(self):
@@ -472,7 +478,7 @@ class ScannerGui(Scanner):
         translate_words_box.config(command=lambda: translate_wrods_hook(translate_words, output_words_excel, output_wordbook))
     
         # 导入配置
-        btn_clear_output = tk.Button(self.window, text="添  加\n配  置")
+        btn_clear_output = tk.Button(self.window, text="添  加\n配  置", command=self.add_config)
         btn_clear_output.grid(row=1,rowspan=1, column=4, columnspan=1, padx=(0, 0), pady=(20,5), sticky='ew')
 
         # 开始扫描
@@ -486,7 +492,7 @@ class ScannerGui(Scanner):
         v_scrollbar = tk.Scrollbar(frame_output, orient=tk.VERTICAL)
         h_scrollbar = tk.Scrollbar(frame_output, orient=tk.HORIZONTAL)
         
-        output_display = tk.Text(frame_output, wrap=tk.NONE, yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set, height=20)
+        output_display = tk.Text(frame_output, wrap=tk.NONE, yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set, height=18)
         v_scrollbar.config(command=output_display.yview)
         h_scrollbar.config(command=output_display.xview)
         
@@ -618,6 +624,92 @@ class ScannerGui(Scanner):
             for pdf_file in pdf_files:
                 self.add_to_youdao_wordbook(file_path=pdf_file)
         self.translator.btn_change("normal")
+        
+        
+    def add_config(self):
+        """add config to pdfScanner
+        """
+        self.new_window = tk.Toplevel(self.window)
+        self.new_window.title("添加配置")
+        
+        title_font = font.Font(family='Arial', size=13, weight='bold')
+
+        # 百度翻译api key-secret
+        options_selected_Frame = tk.LabelFrame(self.new_window, text="百度翻译", borderwidth=0, font=title_font)
+        options_selected_Frame.grid(row=1, rowspan=1, column=0, padx=10, pady=5, sticky='ew')
+        
+        tk.Label(options_selected_Frame, text="key:").grid(row=0, column=0, padx=10, pady=0, sticky=tk.W)
+        baidu_api_key = tk.Entry(options_selected_Frame)
+        baidu_api_key.grid(row=0, column=1, padx=10, pady=0)
+        
+        tk.Label(options_selected_Frame, text="secret:").grid(row=1, column=0, padx=10, pady=0, sticky=tk.W)
+        baidu_api_secret = tk.Entry(options_selected_Frame)
+        baidu_api_secret.grid(row=1, column=1, padx=10, pady=0)
+        
+        if self.translator.trans_id_pool:
+            for i in self.translator.trans_id_pool.keys():
+                self.api_key = i
+                self.api_secret = self.translator.trans_id_pool[i]
+        baidu_api_key.insert(0, self.api_key)
+        baidu_api_secret.insert(0, self.api_secret)
+        
+        # 网易有道词典cookie
+        options_cookie_selected_Frame = tk.LabelFrame(self.new_window, text="有道词典", borderwidth=0, font=title_font)
+        options_cookie_selected_Frame.grid(row=2, rowspan=1, column=0, padx=10, pady=10, sticky='ew')
+        
+        tk.Label(options_cookie_selected_Frame, text="cookie:").grid(row=0, column=0, padx=10, pady=0, sticky=tk.W)
+        youdao_cookie_entry = tk.Entry(options_cookie_selected_Frame)
+        youdao_cookie_entry.grid(row=0, column=1, padx=10, pady=0)
+        
+        # if self.translator.cookies:
+        #     self.youdao_cookie_entry = self.translator.cookies
+        
+        youdao_cookie_entry.insert(0, self.youdao_cookie_entry)
+        
+        confirm_button = tk.Button(self.new_window, text="确认", command=lambda: self.sub_window_sommit(str(baidu_api_key.get()),
+                                                                                                      str(baidu_api_secret.get()),
+                                                                                                      str(youdao_cookie_entry.get()),
+                                                                                                      ),)
+        confirm_button.grid(row=3, column=0, columnspan=2, pady=20)
+        
+        # 设置新窗口位置
+        self.calculate_sub_window_pos()
+
+
+    def sub_window_sommit(self, baidu_api_key, baidu_api_secret, youdao_cookie_entry):
+        """add config window confirm button
+
+        Args:
+            baidu_api_key (str): baidu_api_key
+            baidu_api_secret (str): baidu_api_secret
+            youdao_cookie_entry (str): youdao_cookie_entry
+        """
+        message = ""
+        if baidu_api_key and baidu_api_secret:
+            self.api_key = baidu_api_key
+            self.api_secret = baidu_api_secret
+            self.translator.trans_id_pool[baidu_api_key] = baidu_api_secret
+        else:
+            message = "百度api或secret若为空, 则无法进行翻译!\n"
+        if youdao_cookie_entry:
+            self.youdao_cookie_entry = youdao_cookie_entry
+            self.translator.cookies = youdao_cookie_entry
+        else:
+            message += "有道翻译cookie若为空, 则无法添加单词本!\n"
+        if message:
+            messagebox.showwarning("Warning", message)
+        self.new_window.destroy()
+
+
+    def calculate_sub_window_pos(self):
+        """calculate sub window position
+        """
+        self.new_window.update_idletasks() 
+        width = self.new_window.winfo_width()
+        height = self.new_window.winfo_height()
+        x = self.window.winfo_x() + (self.window.winfo_width() - width) // 2  
+        y = self.window.winfo_y() + self.window.winfo_height() // 5  
+        self.new_window.geometry(f"+{x}+{y}")
 
 
     def add_to_youdao_wordbook(self, file_path):
@@ -626,11 +718,18 @@ class ScannerGui(Scanner):
         Args:
             file_path (str): pdf file's absolutely path
         """
+        if not self.youdao_cookie_entry:
+            output_display.insert(tk.END, f"[Error] 添加到单词本失败!\n")
+            output_display.insert(tk.END, f"[Error] 添加到单词本需要先添加cookie配置!\n\n")
+            messagebox.showwarning("警告", "请先添加有道cookie的配置!")
+            return
+        
         super().scan_pdf(file_path, None)
         if self.highlights_by_color:
             t_poll = ThreadPoolExecutor(max_workers=16)
             thread_list = []
             output_display.insert(tk.END, f"[Info] 开始添加单词到有道单词本...\n")
+
             for color in self.highlights_by_color.keys():
                 for word_hightlight in self.highlights_by_color[color]:
                     f = t_poll.submit(self.translator.add_word_youdao, str(word_hightlight).strip())
@@ -712,17 +811,13 @@ class ScannerGui(Scanner):
             os.system(f'start "" "{file_path}"')
 
 
-def main():
-    # 网页有道翻译的cookie, 填入自己的cookie
-    youdao_cookie = "填入自己的cookie" 
-    
-    # 百度翻译的api, 可以填入多个
+def main():    
+    # 百度翻译的api, 现只可以填入一个key-secret
     id_pool = {
-        '填入自己的key1': '填入自己的secret2',
-        '填入自己的key2': '填入自己的secret2',
+        # '填入你的key': '填入你的secret',
     }
     
-    # 本地字典的路径, 目前仅支持以下两本字典, 将仓库中的字典下载之后, 将路径换成自己的路径
+    # 本地字典的路径, 目前仅支持以下两本字典
     translate_books = [
         "/Users/user/Desktop/trans/英汉大词典_del_ipa_edited.txt",
         "/Users/user/Desktop/trans/英汉大词典_edited.txt",
@@ -737,11 +832,11 @@ def main():
         sleep_time='0.1',
         books=translate_books,
         tag_name="mytest",            # 生成的有道单词本xml中的tag
-        cookies=youdao_cookie
+        cookies=None
     )
     scanner_gui = ScannerGui(
-        name="pdfScanner v1.2",
-        size="460x475",
+        name="pdfScanner v1.3",
+        size="450x450",
         output_file="output.xlsx",    # 生成excel文件的名字
         translator=translator,
     )
