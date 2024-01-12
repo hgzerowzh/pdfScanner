@@ -99,6 +99,7 @@ class ScannerGui(Scanner):
         self.api_key = ""
         self.api_secret = ""
         self.youdao_cookie_entry = ""
+        self.selected_dictionary_entry = []
         self.translator = translator
         self.excel_operator = excel_operator
         self.youdao_worker = youdao_worker
@@ -108,7 +109,7 @@ class ScannerGui(Scanner):
         self.window.title(self.name)
         self.window.geometry(self.size)
 
-        global selected_directory, btn_start_scan, output_display, output_file_path_var, btn_open_file, trans_label, trans_label_var
+        global selected_directory,selected_dictionary, btn_start_scan, output_display, output_file_path_var, btn_open_file, trans_label, trans_label_var
         global translate_words, youdao_wordbook_check_var, output_words_excel, output_wordbook
         
         # 目录选择和显示
@@ -251,6 +252,15 @@ class ScannerGui(Scanner):
             btn_start_scan.config(state=tk.NORMAL)
 
 
+    def select_dictionary(self):
+        """select dictionary button
+        """
+        dictionary_name = filedialog.askopenfile()
+        if dictionary_name:
+            selected_dictionary.delete(0, tk.END)
+            selected_dictionary.insert(0, dictionary_name.name)
+
+
     def start_scan(self):
         """start scan button
         """
@@ -347,7 +357,7 @@ class ScannerGui(Scanner):
         title_font = font.Font(family='Arial', size=13, weight='bold')
 
         # 百度翻译api key-secret
-        options_selected_Frame = tk.LabelFrame(self.new_window, text="百度翻译", borderwidth=0, font=title_font)
+        options_selected_Frame = tk.LabelFrame(self.new_window, text="百度翻译配置", borderwidth=0, font=title_font)
         options_selected_Frame.grid(row=1, rowspan=1, column=0, padx=10, pady=5, sticky='ew')
         
         tk.Label(options_selected_Frame, text="key:").grid(row=0, column=0, padx=10, pady=0, sticky=tk.W)
@@ -365,9 +375,22 @@ class ScannerGui(Scanner):
         baidu_api_key.insert(0, self.api_key)
         baidu_api_secret.insert(0, self.api_secret)
         
+        # 添加本地词典
+        options_local_selected_Frame = tk.LabelFrame(self.new_window, text="本地词典", borderwidth=0, font=title_font)
+        options_local_selected_Frame.grid(row=2, rowspan=1, column=0, padx=10, pady=5, sticky='ew')
+        
+        global selected_dictionary
+        tk.Button(options_local_selected_Frame, text="选择", command=self.select_dictionary).grid(row=0, column=0, padx=(10,5), pady=0, sticky=tk.W)
+        selected_dictionary = tk.Entry(options_local_selected_Frame)
+        selected_dictionary.grid(row=0, column=1, padx=0, pady=0, sticky=tk.W)
+        
+        if self.translator.book and not self.selected_dictionary_entry:
+            self.selected_dictionary_entry = self.translator.book[0]
+        selected_dictionary.insert(0, self.selected_dictionary_entry)
+        
         # 网易有道词典cookie
-        options_cookie_selected_Frame = tk.LabelFrame(self.new_window, text="有道词典", borderwidth=0, font=title_font)
-        options_cookie_selected_Frame.grid(row=2, rowspan=1, column=0, padx=10, pady=10, sticky='ew')
+        options_cookie_selected_Frame = tk.LabelFrame(self.new_window, text="有道词典配置", borderwidth=0, font=title_font)
+        options_cookie_selected_Frame.grid(row=3, rowspan=1, column=0, padx=10, pady=10, sticky='ew')
         
         tk.Label(options_cookie_selected_Frame, text="cookie:").grid(row=0, column=0, padx=10, pady=0, sticky=tk.W)
         youdao_cookie = tk.Entry(options_cookie_selected_Frame)
@@ -381,20 +404,22 @@ class ScannerGui(Scanner):
         confirm_button = tk.Button(self.new_window, text="确认", command=lambda: self.sub_window_sommit(str(baidu_api_key.get()),
                                                                                                       str(baidu_api_secret.get()),
                                                                                                       str(youdao_cookie.get()),
+                                                                                                      str(selected_dictionary.get())
                                                                                                       ),)
-        confirm_button.grid(row=3, column=0, columnspan=2, pady=20)
+        confirm_button.grid(row=4, column=0, columnspan=2, pady=20)
         
         # 设置新窗口位置
         self.calculate_sub_window_pos()
 
 
-    def sub_window_sommit(self, baidu_api_key, baidu_api_secret, cookie_entry):
+    def sub_window_sommit(self, baidu_api_key, baidu_api_secret, cookie_entry, dictionary):
         """add config window confirm button
 
         Args:
             baidu_api_key (str): baidu_api_key
             baidu_api_secret (str): baidu_api_secret
-            youdao_cookie_entry (str): youdao_cookie_entry
+            cookie_entry (str): cookie_entry
+            dictionary (str): selected dictionary
         """
         message = ""
         if baidu_api_key and baidu_api_secret:
@@ -403,6 +428,9 @@ class ScannerGui(Scanner):
             self.translator.trans_id_pool[baidu_api_key] = baidu_api_secret
         else:
             message = "百度api或secret若为空, 则无法进行翻译!\n"
+        if dictionary:
+            self.selected_dictionary_entry = dictionary
+            self.translator.book.append(dictionary)
         if cookie_entry:
             self.youdao_cookie_entry = cookie_entry
             self.youdao_worker.cookie = cookie_entry
@@ -460,13 +488,13 @@ class ScannerGui(Scanner):
 class Translator:
     """Translator Class
     """
-    def __init__(self, gui_obj, trans_id_pool, base_url,words_book_url, sleep_time, books) -> None:
+    def __init__(self, gui_obj, trans_id_pool, base_url,words_book_url, sleep_time, book=[]) -> None:
         self.gui_obj = gui_obj
         self.trans_id_pool = trans_id_pool
         self.BASE_URL = base_url
         self.words_book_url = words_book_url
         self.sleep_time = sleep_time
-        self.books = books
+        self.book = book
         self.dictionary = {}    # 加载的词典
         
       
@@ -477,7 +505,7 @@ class Translator:
             None
         """
         n = 0
-        for book_item in self.books: 
+        for book_item in self.book: 
             my_dictionary = pd.read_csv(book_item, sep='⬄', header=0, names=['word', 'interpretation'])
             def check(series):
                 return series['word'].strip()
@@ -866,17 +894,16 @@ class Excel_operator:
         
 def main():
     # 网页有道翻译的cookie
-    youdao_cookie = ''
+    youdao_cookie = ""
 
     # 百度翻译的api, 现只可以填入一个key-secret
     id_pool = {
         # '填入你的key': '填入你的secret',
     }
     
-    # 本地字典的路径, 目前仅支持以下两本字典
-    translate_books = [
-        "/Users/user/Desktop/trans/英汉大词典_del_ipa_edited.txt",
-        "/Users/user/Desktop/trans/英汉大词典_edited.txt",
+    # 本地字典的路径
+    translate_book = [
+        "./英汉大词典_del_ipa_edited.txt",
     ]
     
     youdao_worker = Youdao_worker(
@@ -898,11 +925,11 @@ def main():
         base_url='https://fanyi-api.baidu.com/api/trans/vip/translate',                     # 百度翻译api
         words_book_url='https://dict.youdao.com/wordbook/webapi/v2/ajax/add?lan=en&word=',  # 有道单词本api
         sleep_time='0.1',
-        books=translate_books,
+        book=translate_book,
     )
     
     scanner_gui = ScannerGui(
-        name="pdfScanner v1.4",
+        name="pdfScanner v1.5",
         size="450x450",
         output_file="output.xlsx",    # 生成excel文件的名字
         translator=translator,
