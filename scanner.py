@@ -313,11 +313,12 @@ class ScannerGui(Scanner):
             
         if not youdao_wordbook_check_var.get() and not translate_words.get() and not output_words_excel.get() and not output_wordbook.get():
             output_display.insert(tk.END, f"[Error] 至少要选一个功能, 不然啥也干不了呀宝贝:)\n\n")
-            self.btn_change("normal")
             
         # 添加到单词本
         if youdao_wordbook_check_var.get(): 
             self.youdao_worker.add2youdao_wordbook(file_path=file_path)
+            
+        self.btn_change("normal")
 
 
     def scan_directory(self):
@@ -340,12 +341,13 @@ class ScannerGui(Scanner):
                 
         if not youdao_wordbook_check_var.get() and not translate_words.get() and not output_words_excel.get() and not output_wordbook.get():
             output_display.insert(tk.END, f"[Error] 至少要选一个功能, 不然啥也干不了呀宝贝:)\n\n")
-            self.btn_change("normal")
 
         # 添加到单词本
         if youdao_wordbook_check_var.get():
             for pdf_file in pdf_files:
                 self.youdao_worker.add2youdao_wordbook(file_path=pdf_file)
+        self.btn_change("normal")
+
         
         
     def add_config(self):
@@ -670,6 +672,7 @@ class Youdao_worker:
         Args:
             file_path (str): pdf file's absolutely path
         """
+        file_name = os.path.basename(file_path)
         if not self.cookie:
             output_display.insert(tk.END, f"[Error] 添加到单词本失败!\n")
             output_display.insert(tk.END, f"[Error] 添加到单词本需要先添加cookie配置!\n\n")
@@ -681,19 +684,17 @@ class Youdao_worker:
         if self.gui_obj.highlights_by_color:
             t_poll = ThreadPoolExecutor(max_workers=16)
             thread_list = []
-            output_display.insert(tk.END, f"[Info] 开始添加单词到有道单词本...\n")
-
+            output_display.insert(tk.END, f"[Info] 开始添加PDF文件中的单词到有道单词本...\n")
+            output_display.insert(tk.END, f"[Info] PDF文件名: {file_name}\n")
             for color in self.gui_obj.highlights_by_color.keys():
                 for word_hightlight in self.gui_obj.highlights_by_color[color]:
                     f = t_poll.submit(self.youdao_wordbook_request, str(word_hightlight).strip())
                     thread_list.append(f)
             wait(thread_list, return_when=ALL_COMPLETED)
-            
-            output_display.insert(tk.END, f"[Info] 完成! 单词添加到单词本完成!\n")
+            output_display.insert(tk.END, f"[Info] 完成! 当前PDF中的单词添加到单词本完成!\n\n")
             current_xview = output_display.xview()
             output_display.see(tk.END)
             output_display.xview_moveto(current_xview[0])
-        self.gui_obj.btn_change("normal")
             
             
     def youdao_wordbook_request(self, word):
@@ -894,7 +895,7 @@ class Excel_operator:
         
 def main():
     # 网页有道翻译的cookie
-    youdao_cookie = ""
+    youdao_cookie = ''
 
     # 百度翻译的api, 现只可以填入一个key-secret
     id_pool = {
@@ -929,7 +930,7 @@ def main():
     )
     
     scanner_gui = ScannerGui(
-        name="pdfScanner v1.5",
+        name="pdfScanner v1.5.1",
         size="450x450",
         output_file="output.xlsx",    # 生成excel文件的名字
         translator=translator,
