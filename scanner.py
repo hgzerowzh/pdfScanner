@@ -930,7 +930,7 @@ def main():
     )
     
     scanner_gui = ScannerGui(
-        name="pdfScanner v1.5.1",
+        name="pdfScanner v1.5.2",
         size="450x450",
         output_file="output.xlsx",    # 生成excel文件的名字
         translator=translator,
