@@ -904,7 +904,7 @@ def main():
     
     # 本地字典的路径
     translate_book = [
-        "./英汉大词典_del_ipa_edited.txt",
+        "./Dictionary/英汉大词典_del_ipa_edited.txt",
     ]
     
     youdao_worker = Youdao_worker(
