@@ -21,7 +21,7 @@
    <img width="340" alt="image" src="https://github.com/hgzerowzh/pdfScanner/assets/64787489/1d68322d-7b2d-4d19-ad69-d41494c3c08a">  <img width="340" alt="image" src="https://github.com/hgzerowzh/pdfScanner/assets/64787489/9b4d442f-4159-49ca-b071-c9d4c67a1634">  <img width="340" alt="image" src="https://github.com/hgzerowzh/pdfScanner/assets/64787489/c0d8ff81-0624-4315-b298-5458fd447a71">
 
 
-#### 电脑端端有道单词本
+#### 电脑端有道单词本
 <img width="600" alt="image" src="https://github.com/hgzerowzh/pdfScanner/assets/64787489/59ea605c-55d1-4293-aa89-9dbc73b843c8">
 
 
